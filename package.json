@@ -1,0 +1,25 @@
+{
+  "name": "dealer-crm",
+  "version": "1.0.0",
+  "description": "CRM especializado para concesionarios de vehículos con integración WhatsApp",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev --name",
+    "db:seed": "npx tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset",
+    "setup": "prisma generate && prisma db push && npx tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
+  },
+  "keywords": ["crm", "dealer", "whatsapp", "car-dealership"],
+  "author": "",
+  "license": "ISC"
+}

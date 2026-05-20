@@ -1,0 +1,542 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== MULTI-TENANT =====================
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logo        String?
+  plan        String   @default("free") // free, pro, enterprise
+  whatsappConfig Json?
+  metaConfig  Json?    // Facebook/Instagram integration config
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  leads       Lead[]
+  contacts    Contact[]
+  vehicles    Vehicle[]
+  sales       Sale[]
+  banks       Bank[]
+  marketingChannels MarketingChannel[]
+  workshopOrders WorkshopOrder[]
+  customFields CustomField[]
+  tags        Tag[]
+}
+
+// ===================== USUARIOS =====================
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  email          String   @unique
+  password       String
+  role           Role     @default(SALES)
+  avatar         String?
+  phone          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  leads          Lead[]       @relation("AssignedLeads")
+  createdLeads   Lead[]       @relation("CreatedLeads")
+  followUps      FollowUp[]
+  sales          Sale[]
+  workshopOrders WorkshopOrder[] @relation("AssignedMechanic")
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SALES
+  MECHANIC
+  VIEWER
+}
+
+// ===================== LEADS / CAPTACIÓN =====================
+model Lead {
+  id               String    @id @default(cuid())
+  organizationId   String
+  name             String
+  phone            String
+  email            String?
+  channel          Channel   @default(WHATSAPP) // WhatsApp, Instagram, Facebook, Web, Otro
+  vehicleInterest  String?   // Vehículo de interés
+  initialAmount    Float?    // Inicial
+  assignedToId     String?   // Vendedor asignado
+  createdById      String?
+  status           LeadStatus @default(NUEVO)
+  bankId           String?   // Banco asignado
+  bankStatus       BankStatus?
+  entryDate        DateTime  @default(now())
+  lastContact      DateTime?
+  priority         Priority  @default(MEDIA)
+  closeDate        DateTime?
+  lossReason       String?   // Motivo de pérdida
+  sourceMessage    String?   // Mensaje original de WhatsApp/Facebook/Instagram
+  sourceMessageId  String?   // ID del mensaje original
+  tags             String[]  @default([])
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  assignedTo       User?        @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  createdBy        User?        @relation("CreatedLeads", fields: [createdById], references: [id])
+  bank             Bank?        @relation(fields: [bankId], references: [id])
+  followUps        FollowUp[]
+  sale             Sale?
+
+  @@index([organizationId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("leads")
+}
+
+enum Channel {
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  WEB
+  LLAMADA
+  PRESENCIAL
+  OTRO
+}
+
+enum LeadStatus {
+  NUEVO
+  CONTACTADO
+  CALIFICADO
+  EN_NEGOCIACION
+  CERRADO_GANADO
+  CERRADO_PERDIDO
+}
+
+enum BankStatus {
+  PENDIENTE
+  EN_REVISION
+  APROBADO
+  RECHAZADO
+}
+
+enum Priority {
+  ALTA
+  MEDIA
+  BAJA
+}
+
+// ===================== CONTACTOS (agenda unificada) =====================
+model Contact {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  phone          String
+  email          String?
+  type           ContactType @default(CLIENTE)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  followUps    FollowUp[]
+
+  @@index([organizationId])
+  @@map("contacts")
+}
+
+enum ContactType {
+  CLIENTE
+  PROSPECTO
+  PROVEEDOR
+  BANCO
+  OTRO
+}
+
+// ===================== SEGUIMIENTO =====================
+model FollowUp {
+  id             String       @id @default(cuid())
+  leadId         String?
+  contactId      String?
+  organizationId String
+  contactDate    DateTime     @default(now())
+  contactType    ContactMethod
+  result         String?
+  nextStep       String?
+  nextDate       DateTime?
+  responsibleId  String
+  status         FollowUpStatus @default(PENDIENTE)
+  notes          String?
+  duration      Int?          // duración en minutos
+  createdAt      DateTime     @default(now())
+
+  lead          Lead?    @relation(fields: [leadId], references: [id])
+  contact       Contact? @relation(fields: [contactId], references: [id])
+  responsible   User     @relation(fields: [responsibleId], references: [id])
+
+  @@index([leadId])
+  @@index([contactId])
+  @@index([responsibleId])
+  @@map("follow_ups")
+}
+
+enum ContactMethod {
+  WHATSAPP
+  LLAMADA
+  EMAIL
+  PRESENCIAL
+  MENSAJE
+}
+
+enum FollowUpStatus {
+  PENDIENTE
+  COMPLETADO
+  CANCELADO
+}
+
+// ===================== VENTAS =====================
+model Sale {
+  id             String   @id @default(cuid())
+  organizationId String
+  leadId         String   @unique
+  vehicleId      String?
+  clientName     String
+  initialPrice   Float    // Precio inicial
+  financedAmount Float?   // Monto financiado
+  commission     Float?   // Comisión
+  sellerId       String   // Vendedor
+  channel        Channel  @default(WHATSAPP)
+  bankId         String?
+  saleDate       DateTime @default(now())
+  closingTime    Int?     // Días hasta cierre
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  lead         Lead         @relation(fields: [leadId], references: [id])
+  vehicle      Vehicle?     @relation(fields: [vehicleId], references: [id])
+  seller       User         @relation(fields: [sellerId], references: [id])
+  bank         Bank?        @relation(fields: [bankId], references: [id])
+
+  @@index([organizationId])
+  @@index([sellerId])
+  @@map("sales")
+}
+
+// ===================== INVENTARIO =====================
+model Vehicle {
+  id             String    @id @default(cuid())
+  organizationId String
+  brand          String    // Marca
+  model          String    // Modelo
+  year           Int       // Año
+  price          Float     // Precio
+  minInitial     Float?    // Inicial mínima
+  status         VehicleStatus @default(DISPONIBLE)
+  sellerId       String?   // Vendedor asignado
+  type           String?   // Tipo (sedán, SUV, pickup, etc.)
+  color          String?
+  vin            String?   // Número de chasis
+  plate          String?   // Placa
+  mileage        Int?      // Kilometraje
+  fuel           String?   // Combustible
+  transmission   String?   // Transmisión
+  description    String?   // Descripción
+  images         String[]  @default([])
+  costPrice      Float?    // Precio de costo (para taller/margen)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  seller         User?             @relation(fields: [sellerId], references: [id])
+  serviceRecords VehicleServiceRecord[]
+  sales          Sale[]
+
+  @@index([organizationId])
+  @@map("vehicles")
+}
+
+enum VehicleStatus {
+  DISPONIBLE
+  RESERVADO
+  VENDIDO
+  EN_TALLER
+  PUBLICADO
+}
+
+// ===================== RECORD DE SERVICIOS AL VEHÍCULO =====================
+model VehicleServiceRecord {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  title       String   // Ej: "Cambio de aceite", "Pintura"
+  description String?
+  cost        Float    @default(0)
+  date        DateTime @default(now())
+  provider    String?  // Quién hizo el trabajo
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId])
+  @@map("vehicle_service_records")
+}
+
+// ===================== POST-VENTA =====================
+model PostSale {
+  id             String   @id @default(cuid())
+  organizationId String
+  saleId         String   @unique
+  clientName     String
+  vehicleInfo    String   // Descripción del vehículo
+  purchaseDate   DateTime
+  warrantyExpires DateTime?
+  nextContact    DateTime?
+  contactType    ContactMethod?
+  status         PostSaleStatus @default(ACTIVO)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  sale         Sale         @relation(fields: [saleId], references: [id])
+
+  @@index([organizationId])
+  @@map("post_sales")
+}
+
+enum PostSaleStatus {
+  ACTIVO
+  EN_GARANTIA
+  GARANTIA_VENCIDA
+  INACTIVO
+}
+
+// ===================== BANCOS =====================
+model Bank {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  contactName    String?
+  contactPhone   String?
+  contactEmail   String?
+  branches       String?  // Sucursales
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  leads        Lead[]
+  sales        Sale[]
+
+  @@index([organizationId])
+  @@map("banks")
+}
+
+// ===================== MARKETING =====================
+model MarketingChannel {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String   // Ej: "Facebook Ads", "Instagram Orgánico"
+  channel        Channel
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("marketing_channels")
+}
+
+// ===================== TALLER MECÁNICO =====================
+model WorkshopOrder {
+  id             String   @id @default(cuid())
+  organizationId String
+  vehicleId      String?
+  clientName     String
+  clientPhone    String?
+  vehicleInfo    String   // Marca, modelo, año, placa
+  description    String   // Descripción del trabajo
+  status         WorkshopStatus @default(PENDIENTE)
+  assignedToId   String?  // Mecánico asignado
+  entryDate      DateTime @default(now())
+  estimatedDelivery DateTime?
+  deliveryDate   DateTime?
+  totalCost      Float    @default(0)
+  totalCharged   Float    @default(0) // Cobrado al cliente
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  vehicle      Vehicle?          @relation(fields: [vehicleId], references: [id])
+  assignedTo   User?             @relation("AssignedMechanic", fields: [assignedToId], references: [id])
+  processes    WorkshopProcess[]
+  expenses     WorkshopExpense[]
+
+  @@index([organizationId])
+  @@map("workshop_orders")
+}
+
+enum WorkshopStatus {
+  PENDIENTE
+  EN_PROCESO
+  EN_ESPERA_REPUESTOS
+  LISTO
+  ENTREGADO
+  CANCELADO
+}
+
+// ===================== PROCESOS DE TALLER =====================
+model WorkshopProcess {
+  id             String   @id @default(cuid())
+  workshopOrderId String
+  name           String   // Ej: "Diagnóstico", "Cambio de frenos"
+  description    String?
+  status         ProcessStatus @default(PENDIENTE)
+  startDate      DateTime?
+  endDate        DateTime?
+  durationMinutes Int?    // Duración real en minutos
+  mechanicId     String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workshopOrder WorkshopOrder @relation(fields: [workshopOrderId], references: [id])
+
+  @@index([workshopOrderId])
+  @@map("workshop_processes")
+}
+
+enum ProcessStatus {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADO
+}
+
+// ===================== GASTOS DE TALLER =====================
+model WorkshopExpense {
+  id             String   @id @default(cuid())
+  workshopOrderId String
+  concept        String   // Concepto (repuestos, mano de obra, etc.)
+  amount         Float
+  category       ExpenseCategory @default(REPUESTOS)
+  date           DateTime @default(now())
+  provider       String?
+  invoice        String?  // Número de factura
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  workshopOrder WorkshopOrder @relation(fields: [workshopOrderId], references: [id])
+
+  @@index([workshopOrderId])
+  @@map("workshop_expenses")
+}
+
+enum ExpenseCategory {
+  REPUESTOS
+  MANO_DE_OBRA
+  HERRAMIENTAS
+  EXTERNO
+  OTRO
+}
+
+// ===================== CAMPOS PERSONALIZABLES =====================
+model CustomField {
+  id             String   @id @default(cuid())
+  organizationId String
+  module         String   // leads, vehicles, sales, etc.
+  name           String
+  type           String   @default("text") // text, number, date, select
+  options        String[] @default([]) // opciones para tipo select
+  required       Boolean  @default(false)
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("custom_fields")
+}
+
+// ===================== ETIQUETAS =====================
+model Tag {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  color          String   @default("#3B82F6")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+// ===================== MENSAJES WHATSAPP =====================
+model WhatsAppMessage {
+  id             String   @id @default(cuid())
+  organizationId String
+  fromNumber     String
+  toNumber       String
+  message        String
+  direction      String   @default("inbound") // inbound, outbound
+  status         String   @default("received") // received, sent, delivered, read, failed
+  metaMessageId  String?  // ID de Meta
+  leadId         String?
+  mediaUrl       String?
+  mediaType      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  lead         Lead?        @relation(fields: [leadId], references: [id])
+
+  @@index([organizationId])
+  @@index([fromNumber])
+  @@map("whatsapp_messages")
+}
+
+// ===================== CONFIGURACIÓN DE WHATSAPP POR ORGANIZACIÓN =====================
+model WhatsAppConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  phoneNumberId  String   // ID del número de teléfono de Meta
+  wabaId         String   // WhatsApp Business Account ID
+  accessToken    String   // Token de acceso (encriptado)
+  webhookVerifyToken String // Token de verificación del webhook
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("whatsapp_configs")
+}
+
+// ===================== AUDITORÍA =====================
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String
+  entity         String   // lead, sale, vehicle, etc.
+  entityId       String?
+  changes        Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("audit_logs")
+}
