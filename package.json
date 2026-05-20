@@ -19,7 +19,21 @@
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
   },
-  "keywords": ["crm", "dealer", "whatsapp", "car-dealership"],
+  "keywords": [
+    "crm",
+    "dealer",
+    "whatsapp",
+    "car-dealership"
+  ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
+    "prisma": "^6.19.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.3"
+  }
 }
